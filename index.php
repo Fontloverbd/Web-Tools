@@ -12,7 +12,7 @@ if (!isset($GLOBALS['BOT_CONFIG'])) {
     $GLOBALS['BOT_CONFIG'] = [
         'BOT_TOKEN'         => getenv('BOT_TOKEN') ?: '8842916562:AAEk-gkHf4fNGM8lhUKjv0sGSWljIe2Kq-4',
         'TARGET_GROUP_ID'   => getenv('TARGET_GROUP_ID') ?: '-1003875264920',
-        'TARGET_TOPIC_ID'   => getenv('TARGET_TOPIC_ID') ?: '9927',
+        'TARGET_TOPIC_ID'   => getenv('TARGET_TOPIC_ID') ?: '15824',
     ];
 }
 
