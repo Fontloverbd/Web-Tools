@@ -311,11 +311,11 @@ function fileTypeKeyboard() {
 // 5. HELP TEXTS
 // ============================================================
 function homeText() {
-    return "🤖 <b>Welcome to Code Utility Bot</b>\n\nনিচের Menu থেকে আপনার প্রয়োজনীয় অপশন নির্বাচন করুন।";
+    return "🤖 <b>Welcome to Code Utility Bot</b>\n\nনিচের Menu থেকে আপনার প্রয়োজনীয় অপشن নির্বাচন করুন।";
 }
 
 // ============================================================
-// 6. BUTTON-STYLE INJECTION ENGINE (Fixed & Optimized)
+// 6. BUTTON-STYLE INJECTION ENGINE (Sequential: Danger -> Success -> Primary)
 // ============================================================
 function applyButtonStyles($code) {
     if (!function_exists('token_get_all')) { return $code; }
@@ -348,7 +348,6 @@ function applyButtonStyles($code) {
         while ($k < $n && is_array($tokens[$k]) && $tokens[$k][0] === T_WHITESPACE) { $k++; }
         if ($k >= $n || !is_array($tokens[$k]) || $tokens[$k][0] !== T_CONSTANT_ENCAPSED_STRING) { continue; }
 
-        // স্কোপ বা ব্র্যাকেটের ভেতর বাটন অ্যারে চেক করা
         $depth = 0; $hasButtonHint = false; $hasStyle = false;
         for ($p = $k + 1; $p < $n; $p++) {
             $t = $tokens[$p];
@@ -363,8 +362,9 @@ function applyButtonStyles($code) {
         }
         
         if ($hasButtonHint && !$hasStyle) {
+            // সিরিয়াল ক্রমানুসারে কালার: Danger -> Success -> Primary
             $sequence = ['danger', 'success', 'primary'];
-            $style = $sequence[$counter % count($sequence)];
+            $style = $sequence[$counter % 3];
             $counter++;
             $insertions[$k] = ",\n    \"style\" => \"$style\"";
         }
