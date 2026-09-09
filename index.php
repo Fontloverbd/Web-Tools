@@ -94,6 +94,7 @@ function sendDocumentFromString($chatId, $filename, $content, $caption = '') {
         'caption' => $caption,
     ];
 
+    // সমাধান: এখানেও টপিক আইডি চেক করে যুক্ত করা হয়েছে, যাতে গ্রুপ টপিকে ফাইল পাঠানো যায়
     if (defined('TARGET_GROUP_ID') && (string)$chatId === (string)TARGET_GROUP_ID && defined('TARGET_TOPIC_ID') && TARGET_TOPIC_ID != '') {
         $params['message_thread_id'] = TARGET_TOPIC_ID;
     }
@@ -533,7 +534,7 @@ function handleCreateColor($chatId, $userId, $state) {
     $state['code_buffer'] = [];
     $state['mode'] = null;
     saveState($userId, $state);
-    sendDocumentFromString($chatId, 'bot.php', $colored, '🎨 Colored Code');
+    sendDocumentFromString($chatId, $chatId, $colored, '🎨 Colored Code');
 }
 
 function createAndSendFile($chatId, $userId, $ftName, $state) {
@@ -541,8 +542,8 @@ function createAndSendFile($chatId, $userId, $ftName, $state) {
     if (!$code) return;
     if ($ftName === 'index.zip') {
         $zipContent = buildZipFromCode($code, 'index.php');
-        if ($zipContent) sendDocumentFromString($chatId, 'index.zip', $zipContent, '✅ ZIP Created');
+        if ($zipContent) sendDocumentFromString($chatId, $chatId, $zipContent, '✅ ZIP Created');
     } else {
-        sendDocumentFromString($chatId, $ftName, $code, '✅ File Created');
+        sendDocumentFromString($chatId, $chatId, $code, '✅ File Created');
     }
 }
