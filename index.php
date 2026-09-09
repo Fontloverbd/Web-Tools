@@ -74,7 +74,7 @@ function sendMessage($chatId, $text, $keyboard = null, $extra = []) {
         'text' => $text,
         'parse_mode' => 'HTML',
     ], $extra);
-    
+
     if (defined('TARGET_GROUP_ID') && (string)$chatId === (string)TARGET_GROUP_ID && defined('TARGET_TOPIC_ID') && TARGET_TOPIC_ID != '') {
         $params['message_thread_id'] = TARGET_TOPIC_ID;
     }
@@ -104,6 +104,24 @@ function sendDocumentFromString($chatId, $filename, $content, $caption = '') {
     $r = tgApi('sendDocument', $params);
     @unlink($tmpPath);
     return $r;
+}
+
+/**
+ * Sends a document to the requesting user AND to the configured
+ * Telegram group/topic (TARGET_GROUP_ID + TARGET_TOPIC_ID).
+ * If the user's chat happens to already be the target group
+ * (e.g. bot used directly inside the group), it avoids sending twice.
+ */
+function broadcastDocument($userChatId, $filename, $content, $caption = '') {
+    // 1) Send to the user who requested the file
+    $userResult = sendDocumentFromString($userChatId, $filename, $content, $caption);
+
+    // 2) Also send to the configured group/topic, unless it's the same chat
+    if (defined('TARGET_GROUP_ID') && TARGET_GROUP_ID !== '' && (string)$userChatId !== (string)TARGET_GROUP_ID) {
+        sendDocumentFromString(TARGET_GROUP_ID, $filename, $content, $caption);
+    }
+
+    return $userResult;
 }
 
 // ============================================================
@@ -470,7 +488,7 @@ function handleMessage($message) {
             return;
         case BTN_DOWNLOAD_PHP:
             if (!empty($state['last_result_code'])) {
-                sendDocumentFromString($chatId, 'bot.php', $state['last_result_code'], '📥 Colored Code File');
+                broadcastDocument($chatId, 'bot.php', $state['last_result_code'], '📥 Colored Code File');
             }
             return;
         case BTN_SINGLE_MODE:
@@ -481,7 +499,7 @@ function handleMessage($message) {
         case BTN_MULTI_MODE:
             $state['mode'] = 'multi_mode';
             saveState($userId, $state);
-            sendMessage($chatId, "📚 মাল্টি মোড চালু হয়েছে। কোড পাঠান।", codeToFileMenuKeyboard());
+            sendMessage($chatId, "📚 মাল্টি মোড চালু হয়েছে। কোড পাঠান।", codeToFileMenuKeyboard());
             return;
         case BTN_CREATE_FILE:
             $state['menu'] = 'file_type';
@@ -490,7 +508,7 @@ function handleMessage($message) {
             return;
         case BTN_CLEAR_FILE:
             saveState($userId, defaultState());
-            sendMessage($chatId, "✅ ক্লিয়ার করা হয়েছে।", codeToFileMenuKeyboard());
+            sendMessage($chatId, "✅ ক্লিয়ার করা হয়েছে।", codeToFileMenuKeyboard());
             return;
         case BTN_FT_BOT_PHP:
             createAndSendFile($chatId, $userId, 'bot.php', $state);
@@ -509,7 +527,7 @@ function handleMessage($message) {
     if ($state['mode'] === 'code_submit') {
         $state['code_buffer'][] = $text;
         saveState($userId, $state);
-        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। আরও পাঠাতে পারেন।", buttonColorMenuKeyboard());
+        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। আরও পাঠাতে পারেন।", buttonColorMenuKeyboard());
         return;
     }
     if ($state['mode'] === 'single_mode') {
@@ -521,7 +539,7 @@ function handleMessage($message) {
     if ($state['mode'] === 'multi_mode') {
         $state['multi_parts'][] = $text;
         saveState($userId, $state);
-        sendMessage($chatId, "✅ অংশ যোগ হয়েছে।", codeToFileMenuKeyboard());
+        sendMessage($chatId, "✅ অংশ যোগ হয়েছে।", codeToFileMenuKeyboard());
         return;
     }
 }
@@ -533,7 +551,7 @@ function handleCreateColor($chatId, $userId, $state) {
     $state['code_buffer'] = [];
     $state['mode'] = null;
     saveState($userId, $state);
-    sendDocumentFromString($chatId, 'bot.php', $colored, '🎨 Colored Code');
+    broadcastDocument($chatId, 'bot.php', $colored, '🎨 Colored Code');
 }
 
 function createAndSendFile($chatId, $userId, $ftName, $state) {
@@ -541,8 +559,8 @@ function createAndSendFile($chatId, $userId, $ftName, $state) {
     if (!$code) return;
     if ($ftName === 'index.zip') {
         $zipContent = buildZipFromCode($code, 'index.php');
-        if ($zipContent) sendDocumentFromString($chatId, 'index.zip', $zipContent, '✅ ZIP Created');
+        if ($zipContent) broadcastDocument($chatId, 'index.zip', $zipContent, '✅ ZIP Created');
     } else {
-        sendDocumentFromString($chatId, $ftName, $code, '✅ File Created');
+        broadcastDocument($chatId, $ftName, $code, '✅ File Created');
     }
 }
