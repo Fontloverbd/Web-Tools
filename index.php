@@ -238,7 +238,6 @@ function reassembleParts(array $parts) {
 function kbBtn($text, $style = null) {
     $btn = ['text' => $text];
     if ($style !== null) {
-        // টেলিগ্রাম এপিআই লেটেস্ট আপডেট অনুযায়ী সঠিক স্টাইল মান (primary, success, danger) প্রদান করা হলো
         $btn['style'] = strtolower($style);
     }
     return $btn;
@@ -314,15 +313,9 @@ function fileTypeKeyboard() {
 function homeText() {
     return "🤖 <b>Welcome to Code Utility Bot</b>\n\nনিচের Menu থেকে আপনার প্রয়োজনীয় অপশন নির্বাচন করুন।";
 }
-function buttonColorHelpText() {
-    return "📚 <b>Button Color — গাইডলাইন</b>\nআপনার Telegram বট কোডের বাটনে Telegram-এর নিজস্ব style যোগ করে।";
-}
-function codeToFileHelpText() {
-    return "📚 <b>Code To File — গাইডলাইন</b>\nআপনার পাঠানো কোড থেকে সরাসরি ডাউনলোডযোগ্য ফাইল তৈরি করে।";
-}
 
 // ============================================================
-// 6. BUTTON-STYLE INJECTION ENGINE (Updated for Reply & Inline)
+// 6. BUTTON-STYLE INJECTION ENGINE
 // ============================================================
 function applyButtonStyles($code) {
     if (!function_exists('token_get_all')) { return $code; }
@@ -334,7 +327,6 @@ function applyButtonStyles($code) {
 
     $n = count($tokens);
     $counter = 0;
-    // Reply Keyboard এবং Inline Keyboard উভয়ের জন্য বাটন শনাক্ত করার কী-ওয়ার্ডসমূহ
     $buttonKeys = ['text', 'url', 'callback_data', 'web_app', 'request_contact', 'request_location', 'switch_inline_query', 'pay', 'login_url', 'copy_text'];
     $insertions = [];
 
@@ -371,7 +363,6 @@ function applyButtonStyles($code) {
             }
         }
         
-        // যদি এটি একটি সঠিক বাটন অ্যারে হয় এবং এতে পূর্বে style না থাকে তবে স্টাইল ইনজেক্ট করবে
         if ($hasButtonHint && !$hasStyle) {
             $sequence = ['danger', 'success', 'primary'];
             $style = $sequence[$counter % count($sequence)];
@@ -395,13 +386,6 @@ function applyButtonStyles($code) {
 function sanitizeFilename($name) {
     $name = basename($name);
     return preg_replace('/[^A-Za-z0-9_\.\-]/', '_', $name) ?: 'file_' . time();
-}
-
-function detectExtensionFromCode($code) {
-    $trim = ltrim($code);
-    if (stripos($trim, '<?php') === 0) return 'php';
-    if (stripos($trim, '<html') !== false) return 'html';
-    return 'txt';
 }
 
 function buildZipFromCode($code, $innerFilename) {
