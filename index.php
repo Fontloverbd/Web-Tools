@@ -167,7 +167,9 @@ function defaultState() {
         'menu' => 'home',
         'mode' => null,
         'code_buffer' => [],
-        'single_code' => null,
+        // FIX: single mode now accumulates parts just like multi mode,
+        // instead of a single overwritten string.
+        'single_code_parts' => [],
         'multi_parts' => [],
         'last_result_code' => null,
     ];
@@ -326,6 +328,43 @@ function fileTypeKeyboard() {
 // ============================================================
 function homeText() {
     return "🤖 <b>Welcome to Code Utility Bot</b>\n\nনিচের Menu থেকে আপনার প্রয়োজনীয় অপশন নির্বাচন করুন।";
+}
+
+function buttonColorHelpText() {
+    return
+        "📚 <b>Button Color — সম্পূর্ণ গাইডলাইন</b>\n\n" .
+        "এই ফিচারটি আপনার PHP কোডের ভেতরে থাকা Telegram বাটনগুলোতে (Reply Keyboard ও Inline Keyboard — উভয় ধরনের) " .
+        "স্বয়ংক্রিয়ভাবে <b>style</b> (danger, success, primary) যুক্ত করে দেয়, একটার পর একটা ক্রমানুসারে।\n\n" .
+        "<b>ধাপ ১:</b> 📝 <u>Code Submit</u> বাটনে চাপুন।\n" .
+        "<b>ধাপ ২:</b> আপনার PHP কোড পাঠান। কোড অনেক বড় হলে একাধিক মেসেজে ভাগ করে পাঠাতে পারেন — বট প্রতিটি অংশ জমা রাখবে এবং শেষে সব অংশ নিজে থেকেই জোড়া লাগিয়ে নেবে (কোনো অংশ হারাবে না)। যতগুলো অংশ জমা হয়েছে তা প্রতিবার মেসেজে জানিয়ে দেওয়া হবে।\n" .
+        "<b>ধাপ ৩:</b> কোড পাঠানো শেষ হলে 🎨 <u>Create Color</u> বাটনে চাপুন।\n" .
+        "  • বট আপনার কোডের ভেতরে খুঁজে বের করবে কোন অ্যারেতে <code>'text' => '...'</code> আছে (এটাই বাটনের মূল চিহ্ন — Reply ও Inline দুই ধরনের বাটনেই থাকে)।\n" .
+        "  • যেসব বাটন অ্যারেতে আগে থেকেই <code>'style'</code> কী দেওয়া নেই, সেখানে ক্রমানুসারে <code>danger → success → primary</code> style যুক্ত হবে।\n" .
+        "  • যেখানে আগে থেকেই style দেওয়া আছে, সেটা স্পর্শ করা হবে না।\n" .
+        "<b>ধাপ ৪:</b> কালার করা কোডসহ একটি <code>bot.php</code> ফাইল আপনাকে এবং টার্গেট গ্রুপে পাঠানো হবে।\n" .
+        "<b>ধাপ ৫:</b> পরে আবার একই ফাইল পেতে চাইলে 📥 <u>Download PHP</u> বাটনে চাপুন — শেষ তৈরি করা রেজাল্ট আবার পাঠানো হবে।\n\n" .
+        "⚠️ <b>মনে রাখবেন:</b> নতুন করে কোড পাঠানো শুরু করলে (আবার Code Submit চাপলে) আগের জমা করা অংশগুলো মুছে নতুন করে শুরু হয়।\n\n" .
+        "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
+}
+
+function codeToFileHelpText() {
+    return
+        "📚 <b>Code To File — সম্পূর্ণ গাইডলাইন</b>\n\n" .
+        "এই ফিচারটি দিয়ে আপনি যেকোনো কোড টেক্সট থেকে সরাসরি ডাউনলোডযোগ্য ফাইল (PHP, HTML, PY বা ZIP) তৈরি করতে পারবেন। এখানে দুইটি মোড আছে — 📝 <b>Single Mode</b> এবং 📚 <b>Multi Mode</b>।\n\n" .
+        "🔹 <b>Single Mode</b> — একটিমাত্র ফাইলের জন্য কোড জমা দিতে:\n" .
+        "  ১. 📝 Singel Mode বাটনে চাপুন।\n" .
+        "  ২. কোড পাঠান। কোড বড় হলে একাধিক মেসেজে ভাগ করে পাঠাতে পারেন — প্রতিটি অংশ জমা হবে এবং কতগুলো অংশ জমা হয়েছে তা জানিয়ে দেওয়া হবে। ফাইল তৈরির সময় সবগুলো অংশ নিজে থেকেই জোড়া লাগানো হবে।\n" .
+        "  ৩. কোড পাঠানো শেষ হলে সরাসরি 📦 Create File চেপে ফরম্যাট বেছে নিন।\n\n" .
+        "🔹 <b>Multi Mode</b> — একাধিক আলাদা অংশ (যেমন একাধিক ফাইলের কনটেন্ট এক ফাইলে জোড়া দিতে) জমা দিতে:\n" .
+        "  ১. 📚 Multi Mode বাটনে চাপুন।\n" .
+        "  ২. একের পর এক কোড অংশ পাঠান (প্রতিটি আলাদা মেসেজে) — প্রতিটি অংশ ক্রমানুসারে জমা হবে।\n" .
+        "  ৩. সব অংশ পাঠানো শেষ হলে 📦 Create File চেপে ফরম্যাট বেছে নিন।\n\n" .
+        "📦 <b>Create File — ফরম্যাট অপশনসমূহ:</b>\n" .
+        "  • 🤖 <code>bot.php</code> / 📄 <code>index.php</code> / 🌐 <code>index.html</code> / 🐍 <code>index.py</code> — জমা করা কোড ওই নামে ও এক্সটেনশনে সরাসরি ফাইল করে পাঠানো হয়।\n" .
+        "  • 📦 <code>index.zip</code> — জমা করা কোড <code>index.php</code> নামে একটি ফাইলের ভেতরে রেখে ZIP করে পাঠানো হয়।\n" .
+        "  • Multi Mode-এ কোনো অংশ থাকলে সেটাকেই অগ্রাধিকার দেওয়া হয়, না থাকলে Single Mode-এর জমা করা কোড ব্যবহার হয়।\n\n" .
+        "🗑 <b>Clear File</b> — জমা করা সব কোড (Single ও Multi, দুই মোডেরই) মুছে সম্পূর্ণ রিসেট করে।\n\n" .
+        "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
 }
 
 // ============================================================
@@ -505,6 +544,18 @@ function handleMessage($message) {
         case BTN_CREATE_COLOR:
             handleCreateColor($chatId, $userId, $state);
             return;
+        case BTN_HELPLINE:
+            // FIX: this button previously had no handler at all, so
+            // tapping it did nothing. Now it shows a detailed Bangla
+            // guide for whichever menu the user is currently in.
+            if ($state['menu'] === 'button_color') {
+                sendMessage($chatId, buttonColorHelpText(), buttonColorMenuKeyboard());
+            } elseif ($state['menu'] === 'code_to_file') {
+                sendMessage($chatId, codeToFileHelpText(), codeToFileMenuKeyboard());
+            } else {
+                sendMessage($chatId, homeText(), homeKeyboard());
+            }
+            return;
         case BTN_DOWNLOAD_PHP:
             if (!empty($state['last_result_code'])) {
                 broadcastDocument($chatId, 'bot.php', $state['last_result_code'], '📥 Colored Code File');
@@ -512,8 +563,10 @@ function handleMessage($message) {
             return;
         case BTN_SINGLE_MODE:
             $state['mode'] = 'single_mode';
+            // FIX: reset the accumulation buffer when (re-)entering single mode
+            $state['single_code_parts'] = [];
             saveState($userId, $state);
-            sendMessage($chatId, "📝 একটি কোড মেসেজ পাঠান।", codeToFileMenuKeyboard());
+            sendMessage($chatId, "📝 কোড পাঠান। কোড বড় হলে একাধিক মেসেজে ভাগ করে পাঠাতে পারেন, সবগুলো একসাথে জোড়া লাগানো হবে। শেষ হলে 📦 Create File চাপুন।", codeToFileMenuKeyboard());
             return;
         case BTN_MULTI_MODE:
             $state['mode'] = 'multi_mode';
@@ -551,9 +604,14 @@ function handleMessage($message) {
         return;
     }
     if ($state['mode'] === 'single_mode') {
-        $state['single_code'] = $text;
+        // FIX: append this incoming piece instead of overwriting the whole
+        // single_code value. This is what previously caused large code
+        // (sent across multiple Telegram messages) to lose everything
+        // except the very last chunk.
+        $state['single_code_parts'][] = $text;
         saveState($userId, $state);
-        sendMessage($chatId, "✅ কোড সংরক্ষিত। 📦 Create File চাপুন।", codeToFileMenuKeyboard());
+        $partCount = count($state['single_code_parts']);
+        sendMessage($chatId, "✅ কোড অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)\nআরও কোড থাকলে পাঠান, শেষ হলে 📦 Create File চাপুন।", codeToFileMenuKeyboard());
         return;
     }
     if ($state['mode'] === 'multi_mode') {
@@ -576,7 +634,19 @@ function handleCreateColor($chatId, $userId, $state) {
 }
 
 function createAndSendFile($chatId, $userId, $ftName, $state) {
-    $code = !empty($state['multi_parts']) ? reassembleParts($state['multi_parts']) : ($state['single_code'] ?? '');
+    // FIX: previously only $state['single_code'] (a plain string that got
+    // overwritten by every new single-mode message) was used as the
+    // fallback, so large multi-message code in single mode was truncated
+    // to just its last chunk. Now single mode's own accumulated parts are
+    // reassembled the same way multi mode's are.
+    if (!empty($state['multi_parts'])) {
+        $code = reassembleParts($state['multi_parts']);
+    } elseif (!empty($state['single_code_parts'])) {
+        $code = reassembleParts($state['single_code_parts']);
+    } else {
+        $code = '';
+    }
+
     if (!$code) return;
     if ($ftName === 'index.zip') {
         $zipContent = buildZipFromCode($code, 'index.php');
