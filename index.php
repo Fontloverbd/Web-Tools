@@ -315,7 +315,7 @@ function homeText() {
 }
 
 // ============================================================
-// 6. BUTTON-STYLE INJECTION ENGINE
+// 6. BUTTON-STYLE INJECTION ENGINE (Fixed & Optimized)
 // ============================================================
 function applyButtonStyles($code) {
     if (!function_exists('token_get_all')) { return $code; }
@@ -333,9 +333,7 @@ function applyButtonStyles($code) {
     for ($i = 0; $i < $n; $i++) {
         $tok = $tokens[$i];
         if (!is_array($tok) || $tok[0] !== T_CONSTANT_ENCAPSED_STRING) { continue; }
-        $rawVal = $tok[1];
-        
-        $ivMain = substr($rawVal, 1, -1);
+        $ivMain = substr($tok[1], 1, -1);
         if (!in_array($ivMain, $buttonKeys, true)) { continue; }
 
         $j = $i + 1;
@@ -350,6 +348,7 @@ function applyButtonStyles($code) {
         while ($k < $n && is_array($tokens[$k]) && $tokens[$k][0] === T_WHITESPACE) { $k++; }
         if ($k >= $n || !is_array($tokens[$k]) || $tokens[$k][0] !== T_CONSTANT_ENCAPSED_STRING) { continue; }
 
+        // স্কোপ বা ব্র্যাকেটের ভেতর বাটন অ্যারে চেক করা
         $depth = 0; $hasButtonHint = false; $hasStyle = false;
         for ($p = $k + 1; $p < $n; $p++) {
             $t = $tokens[$p];
