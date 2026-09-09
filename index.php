@@ -527,7 +527,8 @@ function handleMessage($message) {
     if ($state['mode'] === 'code_submit') {
         $state['code_buffer'][] = $text;
         saveState($userId, $state);
-        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। আরও পাঠাতে পারেন।", buttonColorMenuKeyboard());
+        $partCount = count($state['code_buffer']);
+        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)\nআরও পাঠাতে পারেন।", buttonColorMenuKeyboard());
         return;
     }
     if ($state['mode'] === 'single_mode') {
@@ -539,7 +540,8 @@ function handleMessage($message) {
     if ($state['mode'] === 'multi_mode') {
         $state['multi_parts'][] = $text;
         saveState($userId, $state);
-        sendMessage($chatId, "✅ অংশ যোগ হয়েছে।", codeToFileMenuKeyboard());
+        $partCount = count($state['multi_parts']);
+        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)", codeToFileMenuKeyboard());
         return;
     }
 }
