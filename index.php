@@ -69,15 +69,13 @@ function tgApi($method, $params = []) {
 }
 
 function sendMessage($chatId, $text, $keyboard = null, $extra = []) {
-    $targetChat = defined('TARGET_GROUP_ID') && TARGET_GROUP_ID != '' ? TARGET_GROUP_ID : $chatId;
-
     $params = array_merge([
-        'chat_id' => $targetChat,
+        'chat_id' => $chatId,
         'text' => $text,
         'parse_mode' => 'HTML',
     ], $extra);
     
-    if (defined('TARGET_TOPIC_ID') && TARGET_TOPIC_ID != '') {
+    if (defined('TARGET_GROUP_ID') && (string)$chatId === (string)TARGET_GROUP_ID && defined('TARGET_TOPIC_ID') && TARGET_TOPIC_ID != '') {
         $params['message_thread_id'] = TARGET_TOPIC_ID;
     }
 
@@ -91,14 +89,12 @@ function sendDocumentFromString($chatId, $filename, $content, $caption = '') {
     $tmpPath = sys_get_temp_dir() . '/' . uniqid('tgdoc_') . '_' . basename($filename);
     file_put_contents($tmpPath, $content);
 
-    $targetChat = defined('TARGET_GROUP_ID') && TARGET_GROUP_ID != '' ? TARGET_GROUP_ID : $chatId;
-
     $params = [
-        'chat_id' => $targetChat,
+        'chat_id' => $chatId,
         'caption' => $caption,
     ];
 
-    if (defined('TARGET_TOPIC_ID') && TARGET_TOPIC_ID != '') {
+    if (defined('TARGET_GROUP_ID') && (string)$chatId === (string)TARGET_GROUP_ID && defined('TARGET_TOPIC_ID') && TARGET_TOPIC_ID != '') {
         $params['message_thread_id'] = TARGET_TOPIC_ID;
     }
 
@@ -428,7 +424,7 @@ function handleMessage($message) {
 
     if (!$chatId || !$userId) return;
     if ($rawText === null) {
-        // শুধুমাত্র টেক্সট না হলে ওয়ার্নিং মেসেজ পাঠানো বন্ধ করা হলো, যাতে টপিকে অনর্থক টেক্সট না আসে
+        sendMessage($chatId, "❌ শুধুমাত্র টেক্সট কোড গ্রহণ করা হয়।");
         return;
     }
 
@@ -436,12 +432,12 @@ function handleMessage($message) {
 
     if ($text === '/start') {
         clearState($userId);
-        // /start কমান্ডের টেক্সট টপিকে পাঠানো বন্ধ করা হলো
+        sendMessage($chatId, homeText(), homeKeyboard());
         return;
     }
     if ($text === '/cancel') {
         clearState($userId);
-        // /cancel কমান্ডের টেক্সট টপিকে পাঠানো বন্ধ করা হলো
+        sendMessage($chatId, "✅ রিসেট করা হয়েছে।", homeKeyboard());
         return;
     }
 
@@ -451,19 +447,23 @@ function handleMessage($message) {
     switch ($trimmed) {
         case BTN_HOME:
             saveState($userId, defaultState());
+            sendMessage($chatId, homeText(), homeKeyboard());
             return;
         case BTN_BUTTON_COLOR:
             $state['menu'] = 'button_color';
             saveState($userId, $state);
+            sendMessage($chatId, "🎨 <b>Button Color</b> মেনু:", buttonColorMenuKeyboard());
             return;
         case BTN_CODE_TO_FILE:
             $state['menu'] = 'code_to_file';
             saveState($userId, $state);
+            sendMessage($chatId, "📁 <b>Code To File</b> মেনু:", codeToFileMenuKeyboard());
             return;
         case BTN_CODE_SUBMIT:
             $state['mode'] = 'code_submit';
             $state['code_buffer'] = [];
             saveState($userId, $state);
+            sendMessage($chatId, "📝 কোড পাঠান। শেষ হলে 🎨 Create Color চাপুন।", buttonColorMenuKeyboard());
             return;
         case BTN_CREATE_COLOR:
             handleCreateColor($chatId, $userId, $state);
@@ -476,17 +476,21 @@ function handleMessage($message) {
         case BTN_SINGLE_MODE:
             $state['mode'] = 'single_mode';
             saveState($userId, $state);
+            sendMessage($chatId, "📝 একটি কোড মেসেজ পাঠান।", codeToFileMenuKeyboard());
             return;
         case BTN_MULTI_MODE:
             $state['mode'] = 'multi_mode';
             saveState($userId, $state);
+            sendMessage($chatId, "📚 মাল্টি মোড চালু হয়েছে। কোড পাঠান।", codeToFileMenuKeyboard());
             return;
         case BTN_CREATE_FILE:
             $state['menu'] = 'file_type';
             saveState($userId, $state);
+            sendMessage($chatId, "📦 ফরম্যাট নির্বাচন করুন:", fileTypeKeyboard());
             return;
         case BTN_CLEAR_FILE:
             saveState($userId, defaultState());
+            sendMessage($chatId, "✅ ক্লিয়ার করা হয়েছে।", codeToFileMenuKeyboard());
             return;
         case BTN_FT_BOT_PHP:
             createAndSendFile($chatId, $userId, 'bot.php', $state);
@@ -505,19 +509,19 @@ function handleMessage($message) {
     if ($state['mode'] === 'code_submit') {
         $state['code_buffer'][] = $text;
         saveState($userId, $state);
-        // কোড অংশ যোগ হওয়ার কনফার্মেশন টেক্সট টপিকে পাঠানো বন্ধ করা হলো
+        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। আরও পাঠাতে পারেন।", buttonColorMenuKeyboard());
         return;
     }
     if ($state['mode'] === 'single_mode') {
         $state['single_code'] = $text;
         saveState($userId, $state);
-        // কোড সংরক্ষণের কনফার্মেশন টেক্সট টপিকে পাঠানো বন্ধ করা হলো
+        sendMessage($chatId, "✅ কোড সংরক্ষিত। 📦 Create File চাপুন।", codeToFileMenuKeyboard());
         return;
     }
     if ($state['mode'] === 'multi_mode') {
         $state['multi_parts'][] = $text;
         saveState($userId, $state);
-        // মাল্টি পার্ট যোগ হওয়ার কনফার্মেশন টেক্সট টপিকে পাঠানো বন্ধ করা হলো
+        sendMessage($chatId, "✅ অংশ যোগ হয়েছে।", codeToFileMenuKeyboard());
         return;
     }
 }
@@ -529,7 +533,6 @@ function handleCreateColor($chatId, $userId, $state) {
     $state['code_buffer'] = [];
     $state['mode'] = null;
     saveState($userId, $state);
-    // এটি ফাইনাল ফাইল, তাই এটি টপিকে ডকুমেন্ট আকারে যাবে
     sendDocumentFromString($chatId, 'bot.php', $colored, '🎨 Colored Code');
 }
 
@@ -538,10 +541,8 @@ function createAndSendFile($chatId, $userId, $ftName, $state) {
     if (!$code) return;
     if ($ftName === 'index.zip') {
         $zipContent = buildZipFromCode($code, 'index.php');
-        // এটি ফাইনাল জিপ ফাইল, তাই এটি টপিকে যাবে
         if ($zipContent) sendDocumentFromString($chatId, 'index.zip', $zipContent, '✅ ZIP Created');
     } else {
-        // এটি ফাইনাল ফাইল, তাই এটি টপিকে যাবে
         sendDocumentFromString($chatId, $ftName, $code, '✅ File Created');
     }
 }
