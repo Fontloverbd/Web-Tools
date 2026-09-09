@@ -341,9 +341,10 @@ function buttonColorHelpText() {
         "  • বট আপনার কোডের ভেতরে খুঁজে বের করবে কোন অ্যারেতে <code>'text' => '...'</code> আছে (এটাই বাটনের মূল চিহ্ন — Reply ও Inline দুই ধরনের বাটনেই থাকে)।\n" .
         "  • যেসব বাটন অ্যারেতে আগে থেকেই <code>'style'</code> কী দেওয়া নেই, সেখানে ক্রমানুসারে <code>danger → success → primary</code> style যুক্ত হবে।\n" .
         "  • যেখানে আগে থেকেই style দেওয়া আছে, সেটা স্পর্শ করা হবে না।\n" .
-        "<b>ধাপ ৪:</b> কালার করা কোডসহ একটি <code>bot.php</code> ফাইল আপনাকে এবং টার্গেট গ্রুপে পাঠানো হবে।\n" .
-        "<b>ধাপ ৫:</b> পরে আবার একই ফাইল পেতে চাইলে 📥 <u>Download PHP</u> বাটনে চাপুন — শেষ তৈরি করা রেজাল্ট আবার পাঠানো হবে।\n\n" .
-        "⚠️ <b>মনে রাখবেন:</b> নতুন করে কোড পাঠানো শুরু করলে (আবার Code Submit চাপলে) আগের জমা করা অংশগুলো মুছে নতুন করে শুরু হয়।\n\n" .
+        "<b>ধাপ ৪:</b> কালার করা কোডসহ একটি <code>bot.php</code> ফাইল আপনাকে এবং টার্গেট গ্রুপে পাঠানো হবে, সাথে 📋 Copy Code ও 📥 Download PHP বাটন দেখানো হবে।\n" .
+        "<b>ধাপ ৫:</b> 📋 <u>Copy Code</u> বাটনে চাপলে সম্পূর্ণ কালার করা কোডটি টেক্সট আকারে পাঠানো হবে (কোড বড় হলে একাধিক মেসেজে ভাগ করে) — Telegram-এ কোড বক্সের উপর ট্যাপ করলেই সরাসরি কপি হয়ে যাবে।\n" .
+        "<b>ধাপ ৬:</b> পরে আবার ফাইলটি পেতে চাইলে 📥 <u>Download PHP</u> বাটনে চাপুন — শেষ তৈরি করা রেজাল্ট আবার পাঠানো হবে।\n\n" .
+        "⚠️ <b>মনে রাখবেন:</b> নতুন করে কোড পাঠানো শুরু করলে (আবার Code Submit চাপলে) আগের জমা করা অংশগুলো মুছে নতুন করে শুরু হয়। কোনো কোড জমা না দিয়ে Create Color বা Download PHP / Copy Code চাপলে বট জানিয়ে দেবে যে কোনো কোড পাওয়া যায়নি।\n\n" .
         "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
 }
 
@@ -364,6 +365,7 @@ function codeToFileHelpText() {
         "  • 📦 <code>index.zip</code> — জমা করা কোড <code>index.php</code> নামে একটি ফাইলের ভেতরে রেখে ZIP করে পাঠানো হয়।\n" .
         "  • Multi Mode-এ কোনো অংশ থাকলে সেটাকেই অগ্রাধিকার দেওয়া হয়, না থাকলে Single Mode-এর জমা করা কোড ব্যবহার হয়।\n\n" .
         "🗑 <b>Clear File</b> — জমা করা সব কোড (Single ও Multi, দুই মোডেরই) মুছে সম্পূর্ণ রিসেট করে।\n\n" .
+        "⚠️ কোনো কোড জমা না দিয়ে সরাসরি Create File চাপলে বট জানিয়ে দেবে যে কোনো কোড পাওয়া যায়নি।\n\n" .
         "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
 }
 
@@ -477,6 +479,58 @@ function buildZipFromCode($code, $innerFilename) {
 }
 
 // ============================================================
+// 7a. COPY CODE (send code as tap-to-copy text message(s))
+// ============================================================
+function sendCodeAsCopyable($chatId, $code) {
+    // Escape HTML-significant characters since we send with parse_mode HTML.
+    // ENT_NOQUOTES: quotes don't need escaping inside plain HTML text content,
+    // only & < > matter for correct parsing.
+    $escaped = htmlspecialchars($code, ENT_NOQUOTES, 'UTF-8');
+
+    $tagOpen = "<pre><code class=\"language-php\">";
+    $tagClose = "</code></pre>";
+    $reserveForLabel = 60; // room for the "অংশ X/Y" label prefix on each message
+    $maxChunkLen = 4096 - strlen($tagOpen) - strlen($tagClose) - $reserveForLabel;
+    if ($maxChunkLen < 500) { $maxChunkLen = 500; }
+
+    $lines = explode("\n", $escaped);
+    $chunks = [];
+    $current = '';
+    foreach ($lines as $line) {
+        $candidate = ($current === '') ? $line : ($current . "\n" . $line);
+        if (strlen($candidate) > $maxChunkLen && $current !== '') {
+            $chunks[] = $current;
+            $current = $line;
+        } else {
+            $current = $candidate;
+        }
+        // A single line longer than the whole budget: hard-split it,
+        // preferring to cut at a space (to avoid slicing an HTML entity
+        // like &amp; in half) when one is conveniently nearby.
+        while (strlen($current) > $maxChunkLen) {
+            $cut = $maxChunkLen;
+            $spacePos = strrpos(substr($current, 0, $maxChunkLen), ' ');
+            if ($spacePos !== false && $spacePos > $maxChunkLen - 100) {
+                $cut = $spacePos;
+            }
+            $chunks[] = substr($current, 0, $cut);
+            $current = substr($current, $cut);
+        }
+    }
+    if ($current !== '' || empty($chunks)) {
+        $chunks[] = $current;
+    }
+
+    $total = count($chunks);
+    foreach ($chunks as $idx => $chunk) {
+        $label = $total > 1
+            ? "📋 <b>Copy Code</b> (অংশ " . ($idx + 1) . "/{$total}):\n"
+            : "📋 <b>Copy Code</b>:\n";
+        sendMessage($chatId, $label . $tagOpen . $chunk . $tagClose);
+    }
+}
+
+// ============================================================
 // 8 & 9. WEBHOOK & MESSAGE HANDLING
 // ============================================================
 $rawInput = file_get_contents('php://input');
@@ -559,6 +613,15 @@ function handleMessage($message) {
         case BTN_DOWNLOAD_PHP:
             if (!empty($state['last_result_code'])) {
                 broadcastDocument($chatId, 'bot.php', $state['last_result_code'], '📥 Colored Code File');
+            } else {
+                sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি! প্রথমে 📝 Code Submit করে কোড পাঠান এবং 🎨 Create Color চাপুন।", buttonColorMenuKeyboard());
+            }
+            return;
+        case BTN_COPY_CODE:
+            if (!empty($state['last_result_code'])) {
+                sendCodeAsCopyable($chatId, $state['last_result_code']);
+            } else {
+                sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি! প্রথমে 📝 Code Submit করে কোড পাঠান এবং 🎨 Create Color চাপুন।", buttonColorMenuKeyboard());
             }
             return;
         case BTN_SINGLE_MODE:
@@ -591,8 +654,21 @@ function handleMessage($message) {
         case BTN_FT_INDEX_HTML:
             createAndSendFile($chatId, $userId, 'index.html', $state);
             return;
+        case BTN_FT_INDEX_PY:
+            // FIX: this button existed in the keyboard but had no handler,
+            // so tapping it did nothing.
+            createAndSendFile($chatId, $userId, 'index.py', $state);
+            return;
         case BTN_FT_INDEX_ZIP:
             createAndSendFile($chatId, $userId, 'index.zip', $state);
+            return;
+        case BTN_BACK:
+            // FIX: this button existed in fileTypeKeyboard() but had no
+            // handler, so tapping it did nothing. It now returns to the
+            // Code To File menu.
+            $state['menu'] = 'code_to_file';
+            saveState($userId, $state);
+            sendMessage($chatId, "📁 <b>Code To File</b> মেনু:", codeToFileMenuKeyboard());
             return;
     }
 
@@ -624,13 +700,17 @@ function handleMessage($message) {
 }
 
 function handleCreateColor($chatId, $userId, $state) {
-    if (empty($state['code_buffer'])) return;
+    if (empty($state['code_buffer'])) {
+        sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি! প্রথমে 📝 Code Submit চেপে কোড পাঠান।", buttonColorMenuKeyboard());
+        return;
+    }
     $colored = applyButtonStyles(reassembleParts($state['code_buffer']));
     $state['last_result_code'] = $colored;
     $state['code_buffer'] = [];
     $state['mode'] = null;
     saveState($userId, $state);
     broadcastDocument($chatId, 'bot.php', $colored, '🎨 Colored Code');
+    sendMessage($chatId, "✅ কালার করা সম্পন্ন হয়েছে! নিচের বাটন থেকে কোড কপি করতে বা আবার ফাইল ডাউনলোড করতে পারেন।", buttonColorResultKeyboard(true));
 }
 
 function createAndSendFile($chatId, $userId, $ftName, $state) {
@@ -647,7 +727,10 @@ function createAndSendFile($chatId, $userId, $ftName, $state) {
         $code = '';
     }
 
-    if (!$code) return;
+    if (!$code) {
+        sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি! প্রথমে 📝 Singel Mode বা 📚 Multi Mode চেপে কোড পাঠান।", codeToFileMenuKeyboard());
+        return;
+    }
     if ($ftName === 'index.zip') {
         $zipContent = buildZipFromCode($code, 'index.php');
         if ($zipContent) broadcastDocument($chatId, 'index.zip', $zipContent, '✅ ZIP Created');
