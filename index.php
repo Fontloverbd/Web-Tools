@@ -485,13 +485,14 @@ function applyButtonStyles($code) {
     return $out;
 }
 
-// Gemini API Code Conversion Function
+// Gemini API Code Conversion Function (Updated with correct model endpoint)
 function convertCodeWithGemini($code, $targetLang) {
     if (!defined('GEMINI_API_KEY') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY_HERE' || empty(GEMINI_API_KEY)) {
         return "❌ Gemini API Key সেট করা হয়নি! কোডের কনফিগারেশনে সঠিক API Key বসান।";
     }
 
-    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . GEMINI_API_KEY;
+    // Updated to gemini-2.0-flash which is fully compatible with current v1beta API
+    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' . GEMINI_API_KEY;
     
     $prompt = "You are an expert programmer. Convert the following source code completely into {$targetLang}. Provide ONLY the converted code inside a clean text format without extra conversation or unnecessary explanations so it can be directly copied and used.";
 
