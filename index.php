@@ -13,6 +13,7 @@ if (!isset($GLOBALS['BOT_CONFIG'])) {
         'BOT_TOKEN'         => getenv('BOT_TOKEN') ?: '8842916562:AAEk-gkHf4fNGM8lhUKjv0sGSWljIe2Kq-4',
         'TARGET_GROUP_ID'   => getenv('TARGET_GROUP_ID') ?: '-1003875264920',
         'TARGET_TOPIC_ID'   => getenv('TARGET_TOPIC_ID') ?: '15824',
+        'GEMINI_API_KEY'    => getenv('GEMINI_API_KEY') ?: 'YOUR_GEMINI_API_KEY_HERE', // এখানে আপনার জেমিনি এপিআই কি বসাবেন
     ];
 }
 
@@ -20,8 +21,6 @@ if (!defined('BOT_TOKEN')) {
     define('BOT_TOKEN', $GLOBALS['BOT_CONFIG']['BOT_TOKEN']);
 }
 
-// Fail fast (and loudly, in logs) if no token was configured, instead of
-// silently doing nothing on every request.
 if (BOT_TOKEN === '') {
     error_log('FATAL: BOT_TOKEN environment variable is not set.');
     http_response_code(500);
@@ -36,6 +35,9 @@ if (!defined('TARGET_GROUP_ID')) {
 }
 if (!defined('TARGET_TOPIC_ID')) {
     define('TARGET_TOPIC_ID', $GLOBALS['BOT_CONFIG']['TARGET_TOPIC_ID']);
+}
+if (!defined('GEMINI_API_KEY')) {
+    define('GEMINI_API_KEY', $GLOBALS['BOT_CONFIG']['GEMINI_API_KEY']);
 }
 
 if (!defined('STATE_DIR')) {
@@ -111,7 +113,7 @@ function sendDocumentFromString($chatId, $filename, $content, $caption = '') {
     if (defined('TARGET_GROUP_ID') && (string)$chatId === (string)TARGET_GROUP_ID && defined('TARGET_TOPIC_ID') && TARGET_TOPIC_ID != '') {
         $params['message_thread_id'] = TARGET_TOPIC_ID;
     }
-if (function_exists('curl_init') && class_exists('CURLFile')) {
+    if (function_exists('curl_init') && class_exists('CURLFile')) {
         $params['document'] = new CURLFile($tmpPath, 'application/octet-stream', $filename);
     }
     $r = tgApi('sendDocument', $params);
@@ -166,10 +168,10 @@ function defaultState() {
         'menu' => 'home',
         'mode' => null,
         'code_buffer' => [],
-        // FIX: single mode now accumulates parts just like multi mode,
-        // instead of a single overwritten string.
         'single_code_parts' => [],
         'multi_parts' => [],
+        'convert_parts' => [],
+        'target_lang' => null,
         'last_result_code' => null,
     ];
 }
@@ -188,7 +190,7 @@ function reconstructRawText($text, $entities) {
         'bold'          => ['open' => '*',   'close' => '*'],
         'italic'        => ['open' => '_',   'close' => '_'],
         'strikethrough' => ['open' => '~',   'close' => '~'],
-        'underline'     => ['open' => '_',  'close' => '_'],
+        'underline'     => ['open' => '_',   'close' => '_'],
         'code'          => ['open' => '`',   'close' => '`'],
         'pre'           => ['open' => '```', 'close' => '```'],
     ];
@@ -229,6 +231,7 @@ function reconstructRawText($text, $entities) {
 
     return mb_convert_encoding($buffer, 'UTF-8', 'UTF-16LE');
 }
+
 function reassembleParts(array $parts) {
     $result = '';
     foreach ($parts as $i => $part) {
@@ -282,6 +285,7 @@ function replyKeyboard($rows, $placeholder = null) {
 
 const BTN_BUTTON_COLOR   = '🎨 Button Color';
 const BTN_CODE_TO_FILE   = '📁 Code To File';
+const BTN_CONVERT_CODE   = '🔄 Convert Code';
 const BTN_CODE_SUBMIT    = '📝 Code Submit';
 const BTN_CREATE_COLOR   = '🎨 Create Color';
 const BTN_HELPLINE       = '📚 HelpLine';
@@ -299,26 +303,62 @@ const BTN_FT_INDEX_PY    = '🐍 index.py';
 const BTN_FT_INDEX_ZIP   = '📦 index.zip';
 const BTN_BACK           = '🔙 Back';
 
+// Convert Language Buttons
+const BTN_LANG_PYTHON    = '🐍 Python';
+const BTN_LANG_PHP       = '🐘 PHP';
+const BTN_LANG_JS        = '⚡ JavaScript';
+const BTN_LANG_JAVA      = '☕ Java';
+const BTN_LANG_CPP       = '⚙️ C++';
+const BTN_LANG_CPLUS     = 'C++';
+const BTN_LANG_CSHARP    = '🔷 C#';
+const BTN_LANG_GO        = '🔵 Go';
+const BTN_LANG_RUBY      = '💎 Ruby';
+
 function homeKeyboard() {
     $c = 0;
-    return replyKeyboard([styledRow([BTN_BUTTON_COLOR, BTN_CODE_TO_FILE], $c)]);
+    return replyKeyboard([
+        styledRow([BTN_BUTTON_COLOR, BTN_CODE_TO_FILE], $c),
+        styledRow([BTN_CONVERT_CODE], $c)
+    ]);
 }
+
 function buttonColorMenuKeyboard() {
     $c = 0;
     return replyKeyboard([styledRow([BTN_CODE_SUBMIT, BTN_CREATE_COLOR], $c), styledRow([BTN_HELPLINE, BTN_HOME], $c)]);
 }
+
 function buttonColorResultKeyboard($withCopy) {
     $c = 0;
     $row1 = $withCopy ? styledRow([BTN_COPY_CODE, BTN_DOWNLOAD_PHP], $c) : styledRow([BTN_DOWNLOAD_PHP], $c);
     return replyKeyboard([$row1, styledRow([BTN_HOME], $c)]);
 }
+
 function codeToFileMenuKeyboard() {
     $c = 0;
     return replyKeyboard([styledRow([BTN_SINGLE_MODE, BTN_MULTI_MODE], $c), styledRow([BTN_CREATE_FILE, BTN_CLEAR_FILE], $c), styledRow([BTN_HELPLINE, BTN_HOME], $c)]);
 }
+
 function fileTypeKeyboard() {
     $c = 0;
     return replyKeyboard([styledRow([BTN_FT_BOT_PHP, BTN_FT_INDEX_PHP], $c), styledRow([BTN_FT_INDEX_HTML, BTN_FT_INDEX_PY], $c), styledRow([BTN_FT_INDEX_ZIP], $c), styledRow([BTN_BACK, BTN_HOME], $c)]);
+}
+
+function convertMenuKeyboard() {
+    $c = 0;
+    return replyKeyboard([
+        styledRow([BTN_LANG_PYTHON, BTN_LANG_PHP], $c),
+        styledRow([BTN_LANG_JS, BTN_LANG_JAVA], $c),
+        styledRow([BTN_LANG_CPP, BTN_LANG_CSHARP], $c),
+        styledRow([BTN_LANG_GO, BTN_LANG_RUBY], $c),
+        styledRow([BTN_HELPLINE, BTN_HOME], $c)
+    ]);
+}
+
+function convertActionKeyboard() {
+    $c = 0;
+    return replyKeyboard([
+        styledRow([BTN_COPY_CODE, BTN_HOME], $c)
+    ]);
 }
 
 // ============================================================
@@ -329,52 +369,31 @@ function homeText() {
 }
 
 function buttonColorHelpText() {
-    return
-        "📚 <b>Button Color — সম্পূর্ণ গাইডলাইন</b>\n\n" .
-        "এই ফিচারটি আপনার PHP কোডের ভেতরে থাকা Telegram বাটনগুলোতে (Reply Keyboard ও Inline Keyboard — উভয় ধরনের) " .
-        "স্বয়ংক্রিয়ভাবে <b>style</b> (danger, success, primary) যুক্ত করে দেয়, একটার পর একটা ক্রমানুসারে।\n\n" .
-        "<b>ধাপ ১:</b> 📝 <u>Code Submit</u> বাটনে চাপুন।\n" .
-"<b>ধাপ ২:</b> আপনার PHP কোড পাঠান। কোড অনেক বড় হলে একাধিক মেসেজে ভাগ করে পাঠাতে পারেন — বট প্রতিটি অংশ জমা রাখবে এবং শেষে সব অংশ নিজে থেকেই জোড়া লাগিয়ে নেবে (কোনো অংশ হারাবে না)। যতগুলো অংশ জমা হয়েছে তা প্রতিবার মেসেজে জানিয়ে দেওয়া হবে।\n" .
-        "<b>ধাপ ৩:</b> কোড পাঠানো শেষ হলে 🎨 <u>Create Color</u> বাটনে চাপুন।\n" .
-        "  • বট আপনার কোডের ভেতরে খুঁজে বের করবে কোন অ্যারেতে <code>'text' => '...'</code> আছে (এটাই বাটনের মূল চিহ্ন — Reply ও Inline দুই ধরনের বাটনেই থাকে)।\n" .
-        "  • যেসব বাটন অ্যারেতে আগে থেকেই <code>'style'</code> কী দেওয়া নেই, সেখানে ক্রমানুসারে <code>danger → success → primary</code> style যুক্ত হবে।\n" .
-        "  • যেখানে আগে থেকেই style দেওয়া আছে, সেটা স্পর্শ করা হবে না।\n" .
-        "<b>ধাপ ৪:</b> কালার করা কোডসহ একটি <code>bot.php</code> ফাইল আপনাকে এবং টার্গেট গ্রুপে পাঠানো হবে, সাথে 📋 Copy Code ও 📥 Download PHP বাটন দেখানো হবে।\n" .
-        "<b>ধাপ ৫:</b> 📋 <u>Copy Code</u> বাটনে চাপলে সম্পূর্ণ কালার করা কোডটি টেক্সট আকারে পাঠানো হবে (কোড বড় হলে একাধিক মেসেজে ভাগ করে) — Telegram-এ কোড বক্সের উপর ট্যাপ করলেই সরাসরি কপি হয়ে যাবে।\n" .
-        "<b>ধাপ ৬:</b> পরে আবার ফাইলটি পেতে চাইলে 📥 <u>Download PHP</u> বাটনে চাপুন — শেষ তৈরি করা রেজাল্ট আবার পাঠানো হবে।\n\n" .
-        "⚠️ <b>মনে রাখবেন:</b> নতুন করে কোড পাঠানো শুরু করলে (আবার Code Submit চাপলে) আগের জমা করা অংশগুলো মুছে নতুন করে শুরু হয়। কোনো কোড জমা না দিয়ে Create Color বা Download PHP / Copy Code চাপলে বট জানিয়ে দেবে যে কোনো কোড পাওয়া যায়নি।\n\n" .
+    return "📚 <b>Button Color — সম্পূর্ণ গাইডলাইন</b>\n\n" .
+        "এই ফিচারটি আপনার PHP কোডের ভেতরে থাকা Telegram বাটনগুলোতে style যুক্ত করে দেয়।\n" .
         "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
 }
 
 function codeToFileHelpText() {
-    return
-        "📚 <b>Code To File — সম্পূর্ণ গাইডলাইন</b>\n\n" .
-        "এই ফিচারটি দিয়ে আপনি যেকোনো কোড টেক্সট থেকে সরাসরি ডাউনলোডযোগ্য ফাইল (PHP, HTML, PY বা ZIP) তৈরি করতে পারবেন। এখানে দুইটি মোড আছে — 📝 <b>Single Mode</b> এবং 📚 <b>Multi Mode</b>।\n\n" .
-        "🔹 <b>Single Mode</b> — একটিমাত্র ফাইলের জন্য কোড জমা দিতে:\n" .
-        "  ১. 📝 Singel Mode বাটনে চাপুন।\n" .
-        "  ২. কোড পাঠান। কোড বড় হলে একাধিক মেসেজে ভাগ করে পাঠাতে পারেন — প্রতিটি অংশ জমা হবে এবং কতগুলো অংশ জমা হয়েছে তা জানিয়ে দেওয়া হবে। ফাইল তৈরির সময় সবগুলো অংশ নিজে থেকেই জোড়া লাগানো হবে।\n" .
-        "  ৩. কোড পাঠানো শেষ হলে সরাসরি 📦 Create File চেপে ফরম্যাট বেছে নিন।\n\n" .
-        "🔹 <b>Multi Mode</b> — একাধিক আলাদা অংশ (যেমন একাধিক ফাইলের কনটেন্ট এক ফাইলে জোড়া দিতে) জমা দিতে:\n" .
-        "  ১. 📚 Multi Mode বাটনে চাপুন।\n" .
-        "  ২. একের পর এক কোড অংশ পাঠান (প্রতিটি আলাদা মেসেজে) — প্রতিটি অংশ ক্রমানুসারে জমা হবে।\n" .
-        "  ৩. সব অংশ পাঠানো শেষ হলে 📦 Create File চেপে ফরম্যাট বেছে নিন।\n\n" .
-        "📦 <b>Create File — ফরম্যাট অপশনসমূহ:</b>\n" .
-        "  • 🤖 <code>bot.php</code> / 📄 <code>index.php</code> / 🌐 <code>index.html</code> / 🐍 <code>index.py</code> — জমা করা কোড ওই নামে ও এক্সটেনশনে সরাসরি ফাইল করে পাঠানো হয়।\n" .
-        "  • 📦 <code>index.zip</code> — জমা করা কোড <code>index.php</code> নামে একটি ফাইলের ভেতরে রেখে ZIP করে পাঠানো হয়।\n" .
-        "  • Multi Mode-এ কোনো অংশ থাকলে সেটাকেই অগ্রাধিকার দেওয়া হয়, না থাকলে Single Mode-এর জমা করা কোড ব্যবহার হয়।\n\n" .
-        "🗑 <b>Clear File</b> — জমা করা সব কোড (Single ও Multi, দুই মোডেরই) মুছে সম্পূর্ণ রিসেট করে।\n\n" .
-        "⚠️ কোনো কোড জমা না দিয়ে সরাসরি Create File চাপলে বট জানিয়ে দেবে যে কোনো কোড পাওয়া যায়নি।\n\n" .
+    return "📚 <b>Code To File — সম্পূর্ণ গাইডলাইন</b>\n\n" .
+        "এই ফিচারটি দিয়ে যেকোনো কোড টেক্সট থেকে সরাসরি ডাউনলোডযোগ্য ফাইল তৈরি করা যায়।\n" .
+        "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
+}
+
+function convertCodeHelpText() {
+    return "📚 <b>Convert Code — সম্পূর্ণ গাইডলাইন</b>\n\n" .
+        "এই ফিচারটি দিয়ে আপনি Gemini AI ব্যবহার করে যেকোনো প্রোগ্রামিং ভাষাকে অন্য ভাষায় রূপান্তর (Convert) করতে পারবেন।\n\n" .
+        "<b>ধাপ ১:</b> 🔄 <u>Convert Code</u> এ চাপার পর যে ভাষায় কোড রূপান্তর করতে চান (যেমন Python, PHP, JS ইত্যাদি) তা সিলেক্ট করুন।\n" .
+        "<b>ধাপ ২:</b> আপনার কোড পাঠান (বট মেসেজ জমা রাখবে)।\n" .
+        "<b>ধাপ ৩:</b> কোড পাঠানো শেষ হলে রূপান্তর হয়ে আপনার কাঙ্ক্ষিত ভাষার কোড চলে আসবে!\n\n" .
         "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
 }
 
 // ============================================================
-// 6. BUTTON-STYLE INJECTION ENGINE (Sequential: Danger -> Success -> Primary)
-//    Custom (reply) keyboard বাটন ['text' => '...']  এবং
-//    Inline keyboard বাটন ['text' => '...', 'url' => '...' / 'callback_data' => '...']
-//    — উভয় ধরনের বাটন অ্যারেই এখানে ধরা হয়।
+// 6. BUTTON-STYLE INJECTION & GEMINI CONVERSION ENGINE
 // ============================================================
 function applyButtonStyles($code) {
-if (!function_exists('token_get_all')) { return $code; }
+    if (!function_exists('token_get_all')) { return $code; }
     $trimmedCode = ltrim($code);
     $hasPhpTag = (stripos($trimmedCode, '<?php') === 0) || (strpos($trimmedCode, '<?') === 0);
     $work = $hasPhpTag ? $code : ("<?php\n" . $code);
@@ -384,13 +403,13 @@ if (!function_exists('token_get_all')) { return $code; }
     $n = count($tokens);
     $counter = 0;
     $insertions = [];
-    $styledArrayStarts = []; // duplicate injection ঠেকাতে - একই অ্যারেতে দুবার style না বসে
+    $styledArrayStarts = [];
 
     for ($i = 0; $i < $n; $i++) {
         $tok = $tokens[$i];
         if (!is_array($tok) || $tok[0] !== T_CONSTANT_ENCAPSED_STRING) { continue; }
         $ivMain = substr($tok[1], 1, -1);
-        if ($ivMain !== 'text') { continue; } // 'text' কী-ই বাটনের মূল সূচক (custom ও inline উভয় বাটনেই থাকে)
+        if ($ivMain !== 'text') { continue; }
 
         $j = $i + 1;
         while ($j < $n && is_array($tokens[$j]) && $tokens[$j][0] === T_WHITESPACE) { $j++; }
@@ -404,7 +423,6 @@ if (!function_exists('token_get_all')) { return $code; }
         while ($k < $n && is_array($tokens[$k]) && $tokens[$k][0] === T_WHITESPACE) { $k++; }
         if ($k >= $n || !is_array($tokens[$k]) || $tokens[$k][0] !== T_CONSTANT_ENCAPSED_STRING) { continue; }
 
-        // 'text' => '...' যে অ্যারে লিটারেলের ভেতরে আছে, তার শুরুর ব্র্যাকেট পিছনের দিকে খুঁজে বের করা
         $start = $i; $depth = 0;
         while ($start > 0) {
             $start--;
@@ -415,9 +433,8 @@ if (!function_exists('token_get_all')) { return $code; }
                 $depth--;
             }
         }
-        if (isset($styledArrayStarts[$start])) { continue; } // এই অ্যারেতে আগেই style বসানো হয়ে গেছে
+        if (isset($styledArrayStarts[$start])) { continue; }
 
-        // সেই অ্যারের শেষ ব্র্যাকেট সামনের দিকে খুঁজে বের করা
         $end = $k; $depth = 0;
         while ($end < $n - 1) {
             $end++;
@@ -429,7 +446,6 @@ if (!function_exists('token_get_all')) { return $code; }
             }
         }
 
-        // পুরো অ্যারে লিটারেল জুড়ে 'style' কী আগে থেকে আছে কিনা যাচাই (দিক নির্বিশেষে)
         $hasStyle = false;
         for ($p = $start; $p <= $end; $p++) {
             $t = $tokens[$p];
@@ -456,6 +472,53 @@ if (!function_exists('token_get_all')) { return $code; }
     return $out;
 }
 
+// Gemini API Code Conversion Function
+function convertCodeWithGemini($code, $targetLang) {
+    if (!defined('GEMINI_API_KEY') || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY_HERE' || empty(GEMINI_API_KEY)) {
+        return "❌ Gemini API Key সেট করা হয়নি! কোডের কনফিগারেশনে সঠিক API Key বসান।";
+    }
+
+    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . GEMINI_API_KEY;
+    
+    $prompt = "You are an expert programmer. Convert the following code into {$targetLang}. Provide ONLY the converted code inside a proper code block or as raw text without unnecessary explanations so it can be directly copied and used.";
+
+    $data = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $prompt . "\n\nCode:\n" . $code]
+                ]
+            ]
+        ]
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 45);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+
+    $result = curl_exec($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    if ($result === false) {
+        return "❌ cURL Error: " . $err;
+    }
+
+    $decoded = json_decode($result, true);
+    if (isset($decoded['candidates'][0]['content']['parts'][0]['text'])) {
+        $convertedText = $decoded['candidates'][0]['content']['parts'][0]['text'];
+        // Clean markdown code blocks if gemini wraps it
+        $convertedText = preg_replace('/^```[a-z]*\s*\n?/i', '', $convertedText);$convertedText = preg_replace('/\n?```\s*$/', '', $convertedText);
+        return trim($convertedText);
+    }
+
+    return "❌ কোড কনভার্ট করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।";
+}
+
 // ============================================================
 // 7. FILE / ZIP CREATION
 // ============================================================
@@ -467,7 +530,7 @@ function sanitizeFilename($name) {
 function buildZipFromCode($code, $innerFilename) {
     if (!class_exists('ZipArchive')) { return null; }
     $tmpZip = sys_get_temp_dir() . '/' . uniqid('tgzip_') . '.zip';
-$zip = new ZipArchive();
+    $zip = new ZipArchive();
     if ($zip->open($tmpZip, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) { return null; }
     $zip->addFromString(sanitizeFilename($innerFilename), $code);
     $zip->close();
@@ -476,18 +539,11 @@ $zip = new ZipArchive();
     return $content;
 }
 
-// ============================================================
-// 7a. COPY CODE (send code as tap-to-copy text message(s))
-// ============================================================
 function sendCodeAsCopyable($chatId, $code) {
-    // Escape HTML-significant characters since we send with parse_mode HTML.
-    // ENT_NOQUOTES: quotes don't need escaping inside plain HTML text content,
-    // only & < > matter for correct parsing.
     $escaped = htmlspecialchars($code, ENT_NOQUOTES, 'UTF-8');
-
-    $tagOpen = "<pre><code class=\"language-php\">";
+    $tagOpen = "<pre><code>";
     $tagClose = "</code></pre>";
-    $reserveForLabel = 60; // room for the "অংশ X/Y" label prefix on each message
+    $reserveForLabel = 60;
     $maxChunkLen = 4096 - strlen($tagOpen) - strlen($tagClose) - $reserveForLabel;
     if ($maxChunkLen < 500) { $maxChunkLen = 500; }
 
@@ -502,9 +558,6 @@ function sendCodeAsCopyable($chatId, $code) {
         } else {
             $current = $candidate;
         }
-        // A single line longer than the whole budget: hard-split it,
-        // preferring to cut at a space (to avoid slicing an HTML entity
-        // like &amp; in half) when one is conveniently nearby.
         while (strlen($current) > $maxChunkLen) {
             $cut = $maxChunkLen;
             $spacePos = strrpos(substr($current, 0, $maxChunkLen), ' ');
@@ -521,9 +574,7 @@ function sendCodeAsCopyable($chatId, $code) {
 
     $total = count($chunks);
     foreach ($chunks as $idx => $chunk) {
-        $label = $total > 1
-            ? "📋 <b>Copy Code</b> (অংশ " . ($idx + 1) . "/{$total}):\n"
-            : "📋 <b>Copy Code</b>:\n";
+        $label = $total > 1 ? "📋 <b>Converted Code</b> (অংশ " . ($idx + 1) . "/{$total}):\n" : "📋 <b>Converted Code</b>:\n";
         sendMessage($chatId, $label . $tagOpen . $chunk . $tagClose);
     }
 }
@@ -575,7 +626,7 @@ function handleMessage($message) {
     switch ($trimmed) {
         case BTN_HOME:
             saveState($userId, defaultState());
-sendMessage($chatId, homeText(), homeKeyboard());
+            sendMessage($chatId, homeText(), homeKeyboard());
             return;
         case BTN_BUTTON_COLOR:
             $state['menu'] = 'button_color';
@@ -587,6 +638,12 @@ sendMessage($chatId, homeText(), homeKeyboard());
             saveState($userId, $state);
             sendMessage($chatId, "📁 <b>Code To File</b> মেনু:", codeToFileMenuKeyboard());
             return;
+        case BTN_CONVERT_CODE:
+            $state['menu'] = 'convert_code';
+            $state['mode'] = 'select_lang';
+            saveState($userId, $state);
+            sendMessage($chatId, "🔄 <b>Convert Code</b>\nকোটি কোন ভাষায় রূপান্তর করতে চান তা নিচের অপশন থেকে সিলেক্ট করুন:", convertMenuKeyboard());
+            return;
         case BTN_CODE_SUBMIT:
             $state['mode'] = 'code_submit';
             $state['code_buffer'] = [];
@@ -597,13 +654,12 @@ sendMessage($chatId, homeText(), homeKeyboard());
             handleCreateColor($chatId, $userId, $state);
             return;
         case BTN_HELPLINE:
-            // FIX: this button previously had no handler at all, so
-            // tapping it did nothing. Now it shows a detailed Bangla
-            // guide for whichever menu the user is currently in.
             if ($state['menu'] === 'button_color') {
                 sendMessage($chatId, buttonColorHelpText(), buttonColorMenuKeyboard());
             } elseif ($state['menu'] === 'code_to_file') {
                 sendMessage($chatId, codeToFileHelpText(), codeToFileMenuKeyboard());
+            } elseif ($state['menu'] === 'convert_code') {
+                sendMessage($chatId, convertCodeHelpText(), convertMenuKeyboard());
             } else {
                 sendMessage($chatId, homeText(), homeKeyboard());
             }
@@ -612,22 +668,21 @@ sendMessage($chatId, homeText(), homeKeyboard());
             if (!empty($state['last_result_code'])) {
                 broadcastDocument($chatId, 'bot.php', $state['last_result_code'], '📥 Colored Code File');
             } else {
-                sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি! প্রথমে 📝 Code Submit করে কোড পাঠান এবং 🎨 Create Color চাপুন।", buttonColorMenuKeyboard());
+                sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি!", buttonColorMenuKeyboard());
             }
             return;
         case BTN_COPY_CODE:
             if (!empty($state['last_result_code'])) {
                 sendCodeAsCopyable($chatId, $state['last_result_code']);
             } else {
-                sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি! প্রথমে 📝 Code Submit করে কোড পাঠান এবং 🎨 Create Color চাপুন।", buttonColorMenuKeyboard());
+                sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি!", homeKeyboard());
             }
             return;
         case BTN_SINGLE_MODE:
             $state['mode'] = 'single_mode';
-            // FIX: reset the accumulation buffer when (re-)entering single mode
             $state['single_code_parts'] = [];
             saveState($userId, $state);
-            sendMessage($chatId, "📝 কোড পাঠান। কোড বড় হলে একাধিক মেসেজে ভাগ করে পাঠাতে পারেন, সবগুলো একসাথে জোড়া লাগানো হবে। শেষ হলে 📦 Create File চাপুন।", codeToFileMenuKeyboard());
+            sendMessage($chatId, "📝 কোড পাঠান। শেষ হলে 📦 Create File চাপুন।", codeToFileMenuKeyboard());
             return;
         case BTN_MULTI_MODE:
             $state['mode'] = 'multi_mode';
@@ -653,39 +708,59 @@ sendMessage($chatId, homeText(), homeKeyboard());
             createAndSendFile($chatId, $userId, 'index.html', $state);
             return;
         case BTN_FT_INDEX_PY:
-// FIX: this button existed in the keyboard but had no handler,
-            // so tapping it did nothing.
             createAndSendFile($chatId, $userId, 'index.py', $state);
             return;
         case BTN_FT_INDEX_ZIP:
             createAndSendFile($chatId, $userId, 'index.zip', $state);
             return;
         case BTN_BACK:
-            // FIX: this button existed in fileTypeKeyboard() but had no
-            // handler, so tapping it did nothing. It now returns to the
-            // Code To File menu.
             $state['menu'] = 'code_to_file';
             saveState($userId, $state);
             sendMessage($chatId, "📁 <b>Code To File</b> মেনু:", codeToFileMenuKeyboard());
             return;
     }
 
+    // Handle Language Selection for Conversion
+    if ($state['menu'] === 'convert_code' && $state['mode'] === 'select_lang') {
+        $langs = [
+            BTN_LANG_PYTHON => 'Python',
+            BTN_LANG_PHP => 'PHP',
+            BTN_LANG_JS => 'JavaScript',
+            BTN_LANG_JAVA => 'Java',
+            BTN_LANG_CPP => 'C++',
+            BTN_LANG_CPLUS => 'C++',
+            BTN_LANG_CSHARP => 'C#',
+            BTN_LANG_GO => 'Go',
+            BTN_LANG_RUBY => 'Ruby'
+        ];
+
+        if (isset($langs[$trimmed])) {
+            $state['target_lang'] = $langs[$trimmed];
+            $state['mode'] = 'convert_input';
+            $state['convert_parts'] = [];
+            saveState($userId, $state);
+            sendMessage($chatId, "✅ আপনি সিলেক্ট করেছেন: <b>{$langs[$trimmed]}</b>\n\nএখন যে কোডটি রূপান্তর করতে চান তা পাঠান (এক বা একাধিক মেসেজে পাঠাতে পারেন)। সব পাঠানো শেষ হলে নিচের যেকোনা বার্তা বা কমান্ড দিয়ে জানিয়ে দিন অথবা অপেক্ষা করুন। কোড পাঠানোর পর আমি স্বয়ংক্রিয়ভাবে কনভার্ট করে দিচ্ছি। আপনি চাইলে কোড পাঠিয়ে শেষ হলে '/convert' লিখুন।", convertMenuKeyboard());
+            return;
+        }
+    }
+
+    if ($trimmed === '/convert' && $state['menu'] === 'convert_code' && !empty($state['convert_parts'])) {
+        handleGeminiConversion($chatId, $userId, $state);
+        return;
+    }
+
     if ($state['mode'] === 'code_submit') {
         $state['code_buffer'][] = $text;
         saveState($userId, $state);
         $partCount = count($state['code_buffer']);
-        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)\nআরও পাঠাতে পারেন।", buttonColorMenuKeyboard());
+        sendMessage($chatId, "✅ অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)", buttonColorMenuKeyboard());
         return;
     }
     if ($state['mode'] === 'single_mode') {
-        // FIX: append this incoming piece instead of overwriting the whole
-        // single_code value. This is what previously caused large code
-        // (sent across multiple Telegram messages) to lose everything
-        // except the very last chunk.
         $state['single_code_parts'][] = $text;
         saveState($userId, $state);
         $partCount = count($state['single_code_parts']);
-        sendMessage($chatId, "✅ কোড অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)\nআরও কোড থাকলে পাঠান, শেষ হলে 📦 Create File চাপুন।", codeToFileMenuKeyboard());
+        sendMessage($chatId, "✅ কোড অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)", codeToFileMenuKeyboard());
         return;
     }
     if ($state['mode'] === 'multi_mode') {
@@ -693,6 +768,14 @@ sendMessage($chatId, homeText(), homeKeyboard());
         saveState($userId, $state);
         $partCount = count($state['multi_parts']);
         sendMessage($chatId, "✅ অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)", codeToFileMenuKeyboard());
+        return;
+    }
+    if ($state['mode'] === 'convert_input') {
+        $state['convert_parts'][] = $text;
+        saveState($userId, $state);
+        
+        // Automatically run conversion or give prompt
+        handleGeminiConversion($chatId, $userId, $state);
         return;
     }
 }
@@ -708,15 +791,32 @@ function handleCreateColor($chatId, $userId, $state) {
     $state['mode'] = null;
     saveState($userId, $state);
     broadcastDocument($chatId, 'bot.php', $colored, '🎨 Colored Code');
-    sendMessage($chatId, "✅ কালার করা সম্পন্ন হয়েছে! নিচের বাটন থেকে কোড কপি করতে বা আবার ফাইল ডাউনলোড করতে পারেন।", buttonColorResultKeyboard(true));
+    sendMessage($chatId, "✅ কালার করা সম্পন্ন হয়েছে!", buttonColorResultKeyboard(true));
+}
+
+function handleGeminiConversion($chatId, $userId, &$state) {
+    if (empty($state['convert_parts'])) {
+        sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি!", convertMenuKeyboard());
+        return;
+    }
+
+    $fullCode = reassembleParts($state['convert_parts']);
+    $targetLang = $state['target_lang'] ?? 'Python';
+
+    sendMessage($chatId, "⏳ Gemini AI কোড রূপান্তর করছে ({$targetLang}), অনুগ্রহ করে অপেক্ষা করুন...");
+
+    $convertedCode = convertCodeWithGemini($fullCode, $targetLang);
+
+    $state['last_result_code'] = $convertedCode;
+    $state['convert_parts'] = [];
+    $state['mode'] = null;
+    saveState($userId, $state);
+
+    sendCodeAsCopyable($chatId, $convertedCode);
+    sendMessage($chatId, "✅ কোড রূপান্তর সফল হয়েছে!", homeKeyboard());
 }
 
 function createAndSendFile($chatId, $userId, $ftName, $state) {
-    // FIX: previously only $state['single_code'] (a plain string that got
-    // overwritten by every new single-mode message) was used as the
-    // fallback, so large multi-message code in single mode was truncated
-    // to just its last chunk. Now single mode's own accumulated parts are
-    // reassembled the same way multi mode's are.
     if (!empty($state['multi_parts'])) {
         $code = reassembleParts($state['multi_parts']);
     } elseif (!empty($state['single_code_parts'])) {
@@ -726,7 +826,7 @@ function createAndSendFile($chatId, $userId, $ftName, $state) {
     }
 
     if (!$code) {
-        sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি! প্রথমে 📝 Singel Mode বা 📚 Multi Mode চেপে কোড পাঠান।", codeToFileMenuKeyboard());
+        sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি!", codeToFileMenuKeyboard());
         return;
     }
     if ($ftName === 'index.zip') {
