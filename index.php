@@ -313,6 +313,8 @@ const BTN_LANG_CPLUS     = 'C++';
 const BTN_LANG_CSHARP    = '🔷 C#';
 const BTN_LANG_GO        = '🔵 Go';
 const BTN_LANG_RUBY      = '💎 Ruby';
+const BTN_RUN_CONVERT    = '🚀 Run Convert';
+const BTN_CLEAR_CONVERT  = '🗑 Clear';
 
 function homeKeyboard() {
     $c = 0;
@@ -357,7 +359,8 @@ function convertMenuKeyboard() {
 function convertActionKeyboard() {
     $c = 0;
     return replyKeyboard([
-        styledRow([BTN_COPY_CODE, BTN_HOME], $c)
+        styledRow([BTN_RUN_CONVERT, BTN_CLEAR_CONVERT], $c),
+        styledRow([BTN_CONVERT_CODE, BTN_HOME], $c)
     ]);
 }
 
@@ -383,9 +386,9 @@ function codeToFileHelpText() {
 function convertCodeHelpText() {
     return "📚 <b>Convert Code — সম্পূর্ণ গাইডলাইন</b>\n\n" .
         "এই ফিচারটি দিয়ে আপনি Gemini AI ব্যবহার করে যেকোনো প্রোগ্রামিং ভাষাকে অন্য ভাষায় রূপান্তর (Convert) করতে পারবেন।\n\n" .
-        "<b>ধাপ ১:</b> 🔄 <u>Convert Code</u> এ চাপার পর যে ভাষায় কোড রূপান্তর করতে চান (যেমন Python, PHP, JS ইত্যাদি) তা সিলেক্ট করুন।\n" .
-        "<b>ধাপ ২:</b> আপনার কোড পাঠান (বট মেসেজ জমা রাখবে)।\n" .
-        "<b>ধাপ ৩:</b> কোড পাঠানো শেষ হলে রূপান্তর হয়ে আপনার কাঙ্ক্ষিত ভাষার কোড চলে আসবে!\n\n" .
+        "<b>ধাপ ১:</b> 🔄 <u>Convert Code</u> এ চাপার পর যে ভাষায় কোড রূপান্তর করতে চান তা সিলেক্ট করুন।\n" .
+        "<b>ধাপ ২:</b> আপনার কোড পাঠান (একাধিক মেসেজে পাঠাতে পারেন)।\n" .
+        "<b>ধাপ ৩:</b> কোড পাঠানো শেষ হলে নিচের **🚀 Run Convert** বাটনে ক্লিক করুন।\n\n" .
         "🏠 মূল মেনুতে ফিরতে চাইলে Home বাটনে চাপুন।";
 }
 
@@ -511,7 +514,6 @@ function convertCodeWithGemini($code, $targetLang) {
     $decoded = json_decode($result, true);
     if (isset($decoded['candidates'][0]['content']['parts'][0]['text'])) {
         $convertedText = $decoded['candidates'][0]['content']['parts'][0]['text'];
-        // Clean markdown code blocks if gemini wraps it
         $convertedText = preg_replace('/^```[a-z]*\s*\n?/i', '', $convertedText);$convertedText = preg_replace('/\n?```\s*$/', '', $convertedText);
         return trim($convertedText);
     }
@@ -642,7 +644,19 @@ function handleMessage($message) {
             $state['menu'] = 'convert_code';
             $state['mode'] = 'select_lang';
             saveState($userId, $state);
-            sendMessage($chatId, "🔄 <b>Convert Code</b>\nকোটি কোন ভাষায় রূপান্তর করতে চান তা নিচের অপশন থেকে সিলেক্ট করুন:", convertMenuKeyboard());
+            sendMessage($chatId, "🔄 <b>Convert Code</b>\nকোড কোন ভাষায় রূপান্তর করতে চান তা নিচের অপশন থেকে সিলেক্ট করুন:", convertMenuKeyboard());
+            return;
+        case BTN_RUN_CONVERT:
+            if ($state['menu'] === 'convert_code' && !empty($state['convert_parts'])) {
+                handleGeminiConversion($chatId, $userId, $state);
+            } else {
+                sendMessage($chatId, "❌ কোনো কোড জমা করা হয়নি! প্রথমে কোড পাঠান।", convertActionKeyboard());
+            }
+            return;
+        case BTN_CLEAR_CONVERT:
+            $state['convert_parts'] = [];
+            saveState($userId, $state);
+            sendMessage($chatId, "🗑 কনভার্ট করার কোড বাফার পরিষ্কার করা হয়েছে। নতুন কোড পাঠান:", convertActionKeyboard());
             return;
         case BTN_CODE_SUBMIT:
             $state['mode'] = 'code_submit';
@@ -739,14 +753,9 @@ function handleMessage($message) {
             $state['mode'] = 'convert_input';
             $state['convert_parts'] = [];
             saveState($userId, $state);
-            sendMessage($chatId, "✅ আপনি সিলেক্ট করেছেন: <b>{$langs[$trimmed]}</b>\n\nএখন যে কোডটি রূপান্তর করতে চান তা পাঠান (এক বা একাধিক মেসেজে পাঠাতে পারেন)। সব পাঠানো শেষ হলে নিচের যেকোনা বার্তা বা কমান্ড দিয়ে জানিয়ে দিন অথবা অপেক্ষা করুন। কোড পাঠানোর পর আমি স্বয়ংক্রিয়ভাবে কনভার্ট করে দিচ্ছি। আপনি চাইলে কোড পাঠিয়ে শেষ হলে '/convert' লিখুন।", convertMenuKeyboard());
+            sendMessage($chatId, "✅ আপনি সিলেক্ট করেছেন: <b>{$langs[$trimmed]}</b>\n\nএখন কোড পাঠান (একাধিক মেসেজে পাঠাতে পারেন)। কোড পাঠানো শেষ হলে নিচের <b>🚀 Run Convert</b> বাটনে চাপুন।", convertActionKeyboard());
             return;
         }
-    }
-
-    if ($trimmed === '/convert' && $state['menu'] === 'convert_code' && !empty($state['convert_parts'])) {
-        handleGeminiConversion($chatId, $userId, $state);
-        return;
     }
 
     if ($state['mode'] === 'code_submit') {
@@ -773,9 +782,8 @@ function handleMessage($message) {
     if ($state['mode'] === 'convert_input') {
         $state['convert_parts'][] = $text;
         saveState($userId, $state);
-        
-        // Automatically run conversion or give prompt
-        handleGeminiConversion($chatId, $userId, $state);
+        $partCount = count($state['convert_parts']);
+        sendMessage($chatId, "✅ কোড অংশ যোগ হয়েছে। (মোট অংশ: <b>{$partCount}</b>টি)\nআরও থাকলে পাঠান অথবা কনভার্ট করতে নিচের <b>🚀 Run Convert</b> বাটনে চাপুন।", convertActionKeyboard());
         return;
     }
 }
@@ -796,7 +804,7 @@ function handleCreateColor($chatId, $userId, $state) {
 
 function handleGeminiConversion($chatId, $userId, &$state) {
     if (empty($state['convert_parts'])) {
-        sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি!", convertMenuKeyboard());
+        sendMessage($chatId, "❌ কোনো কোড পাওয়া যায়নি!", convertActionKeyboard());
         return;
     }
 
